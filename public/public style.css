@@ -1,0 +1,436 @@
+/* public/style.css - CÓDIGO COMPLETO E AGORA RESPONSIVO */
+
+/* --- Variáveis e Reset Básico --- */
+:root {
+    --cor-principal: #007bff; /* Azul primário */
+    --cor-secundaria: #6c757d; /* Cinza secundário */
+    --cor-sucesso: #28a745; /* Verde para sucesso/troco */
+    --cor-erro: #dc3545; /* Vermelho para erro */
+    --cor-fundo: #f8f9fa; /* Fundo leve */
+    --cor-card: #ffffff; /* Fundo dos cards/elementos */
+    --cor-borda: #dee2e6;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: var(--cor-fundo);
+    color: #343a40;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 20px;
+    background-color: var(--cor-card);
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+}
+
+h1, h2 {
+    color: #212529;
+    margin-bottom: 15px;
+}
+
+/* --- Estilização das Mensagens --- */
+#mensagem {
+    padding: 10px;
+    margin-bottom: 20px;
+    border-radius: 4px;
+    font-weight: bold;
+    display: none; 
+}
+
+.mensagem.success {
+    background-color: #d4edda;
+    color: var(--cor-sucesso);
+    border: 1px solid var(--cor-sucesso);
+    display: block;
+}
+
+.mensagem.error {
+    background-color: #f8d7da;
+    color: var(--cor-erro);
+    border: 1px solid var(--cor-erro);
+    display: block;
+}
+
+.mensagem.info {
+    background-color: #cce5ff;
+    color: var(--cor-principal);
+    border: 1px solid var(--cor-principal);
+    display: block;
+}
+
+
+/* --- Estilização das Abas (TABS) --- */
+.tabs {
+    display: flex;
+    border-bottom: 2px solid var(--cor-borda);
+    margin-bottom: 20px;
+}
+
+.tab-button {
+    padding: 10px 20px;
+    border: none;
+    background-color: transparent;
+    cursor: pointer;
+    font-size: 1.1em;
+    font-weight: bold;
+    color: var(--cor-secundaria);
+    transition: all 0.3s ease;
+    border-bottom: 2px solid transparent;
+}
+
+.tab-button:hover {
+    color: var(--cor-principal);
+}
+
+.tab-button.active {
+    color: var(--cor-principal);
+    border-bottom: 2px solid var(--cor-principal);
+}
+
+.tab-content {
+    display: none;
+    padding-top: 15px;
+}
+
+.tab-content.active {
+    display: block; 
+}
+
+#pdv.tab-content.active {
+    display: flex; 
+    gap: 20px;
+}
+
+
+/* --- Layout de Colunas do PDV --- */
+.pdv-col {
+    padding: 15px;
+    border: 1px solid var(--cor-borda);
+    border-radius: 6px;
+}
+
+.pdv-col:first-child { /* Cardápio */
+    flex: 3;
+    max-height: 75vh;
+    overflow-y: auto;
+}
+
+.pdv-col:last-child { /* Pedido Atual */
+    flex: 2;
+    min-width: 350px;
+}
+
+
+/* --- Estilização do Cardápio --- */
+#categorias-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 15px;
+    border-bottom: 1px solid var(--cor-borda);
+    padding-bottom: 10px;
+}
+
+.categoria-btn {
+    padding: 5px 10px;
+    border: 1px solid var(--cor-secundaria);
+    border-radius: 4px;
+    background-color: #ffffff;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: all 0.2s;
+}
+
+.categoria-btn.active {
+    background-color: var(--cor-principal);
+    color: white;
+    border-color: var(--cor-principal);
+}
+
+#cardapio {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 15px;
+    padding-top: 5px;
+}
+
+.cardapio-item {
+    background-color: var(--cor-card);
+    padding: 10px;
+    border-radius: 6px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+    transition: transform 0.1s;
+    border: 1px solid var(--cor-borda);
+}
+
+.cardapio-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.cardapio-item h3 {
+    margin: 0 0 5px 0;
+    font-size: 1em;
+}
+
+.categoria-item {
+    font-size: 0.8em;
+    color: var(--cor-secundaria);
+    margin-bottom: 5px;
+}
+
+.preco {
+    font-weight: bold;
+    color: var(--cor-sucesso);
+    font-size: 1.1em;
+}
+
+
+/* --- Estilização do Pedido Atual --- */
+#pedido-lista {
+    min-height: 200px;
+    max-height: 40vh;
+    overflow-y: auto;
+    margin-bottom: 15px;
+    padding-right: 5px;
+}
+
+.pedido-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px dotted var(--cor-borda);
+}
+
+.pedido-item:last-child {
+    border-bottom: none;
+}
+
+.pedido-actions button {
+    padding: 4px 8px;
+    margin-left: 5px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    background-color: var(--cor-borda);
+}
+
+.pedido-actions button:hover {
+    background-color: var(--cor-secundaria);
+    color: white;
+}
+
+.remover-item {
+    background-color: var(--cor-erro) !important;
+    color: white;
+}
+
+
+/* --- Totais e Pagamento --- */
+.total {
+    display: flex;
+    justify-content: space-between;
+    font-size: 1.3em;
+    font-weight: bold;
+    padding: 10px 0;
+    align-items: center;
+}
+
+.total span:first-child { 
+    order: -1; 
+    flex-grow: 1; 
+    text-align: left; 
+    margin-right: 10px; 
+}
+
+#total-valor {
+    font-size: 2.2em; 
+    color: var(--cor-erro); 
+    font-weight: bolder; 
+    order: 1; 
+}
+
+#troco-valor {
+    color: var(--cor-sucesso); 
+}
+
+/* --- Formulários e Botões Gerais --- */
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+input[type="text"], 
+input[type="number"],
+select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--cor-borda);
+    border-radius: 4px;
+    font-size: 1em;
+}
+
+button {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+/* Botão Principal: Finalizar Pedido */
+#btn-imprimir {
+    width: 100%;
+    background-color: var(--cor-principal);
+    color: white;
+    font-size: 1.2em;
+    margin-top: 20px;
+}
+
+#btn-imprimir:hover:not(:disabled) {
+    background-color: #0056b3;
+}
+
+#btn-imprimir:disabled {
+    background-color: #adb5bd;
+    cursor: not-allowed;
+}
+
+/* Botões Secundários */
+#btn-salvar-produto,
+#btn-cancelar-edicao {
+    background-color: var(--cor-sucesso);
+    color: white;
+    margin-top: 10px;
+}
+
+#btn-cancelar-edicao {
+    background-color: var(--cor-secundaria);
+}
+
+#btn-baixar-csv button {
+    background-color: #ffc107; /* Amarelo para download */
+    color: #212529;
+}
+
+
+/* --- Estilização das Tabelas (Cadastro e Relatórios) --- */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+table th, table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--cor-borda);
+}
+
+table th {
+    background-color: #e9ecef;
+    font-weight: bold;
+    color: #495057;
+}
+
+table tbody tr:hover {
+    background-color: #f1f1f1;
+}
+
+.btn-editar {
+    background-color: #007bff;
+    color: white;
+    padding: 5px 10px;
+    font-size: 0.9em;
+}
+
+.btn-deletar, .btn-estorno {
+    background-color: var(--cor-erro);
+    color: white;
+    padding: 5px 10px;
+    font-size: 0.9em;
+}
+
+/* ================================================================== */
+/* MEDIA QUERIES PARA RESPONSIVIDADE (CELULARES E TABLETS) */
+/* ================================================================== */
+
+@media screen and (max-width: 768px) {
+    
+    /* 1. Container e Abas */
+    .container {
+        margin: 0;
+        padding: 10px;
+        box-shadow: none;
+        border-radius: 0;
+    }
+    
+    .tabs {
+        flex-wrap: wrap; /* Permite que os botões de aba quebrem a linha */
+        margin-bottom: 10px;
+    }
+
+    /* 2. Layout do PDV: Colunas em Pilha */
+    #pdv.tab-content.active {
+        flex-direction: column; /* Coloca Cardápio e Pedido um abaixo do outro */
+        gap: 10px;
+    }
+
+    /* 3. Colunas PDV: Forçar Largura Total e Ordem */
+    .pdv-col {
+        flex: none; /* Ignora flex: 3 e flex: 2 */
+        width: 100%;
+        min-width: 100%;
+        max-height: none;
+        overflow-y: visible;
+        padding: 10px;
+    }
+    
+    /* Ordem Mobile: Pedido (Checkout) em cima, Cardápio embaixo */
+    .pdv-col:first-child { 
+        order: 2; /* Cardápio */
+    }
+    .pdv-col:last-child { 
+        order: 1; /* Pedido Atual */
+    }
+
+    /* 4. Cardápio Grid: Ajustar para caber em telas menores */
+    #cardapio {
+        /* Permite 2 ou 3 itens pequenos por linha em vez de 4 ou 5 */
+        grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); 
+        gap: 8px;
+    }
+
+    /* 5. Fontes e Padding para melhor legibilidade */
+    .cardapio-item h3 {
+        font-size: 0.85em;
+    }
+    .preco {
+        font-size: 1em;
+    }
+    .total {
+        font-size: 1.1em;
+    }
+    #total-valor {
+        font-size: 1.8em;
+    }
+}

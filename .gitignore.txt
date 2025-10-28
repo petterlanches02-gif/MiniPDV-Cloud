@@ -1,0 +1,22 @@
+# Dependências do Node.js
+/node_modules
+
+# Arquivos de log e cache do Node.js
+npm-debug.log*
+.npm
+.eslintcache
+
+# Arquivos de Build
+# O .exe não é necessário na nuvem, pois o servidor lá será Linux/Node.js puro.
+*.exe
+minipdv_local
+
+# Banco de dados local (SQLite)
+# O banco de dados da nuvem será externo (Postgres/MySQL)
+pdv.db
+*.sqlite
+*.sqlite3
+
+# Arquivos do OS e IDEs
+.DS_Store
+.vscode/

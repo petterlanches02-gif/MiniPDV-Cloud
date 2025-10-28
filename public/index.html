@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDV Simples (Node.js/Express)</title>
+    <link rel="stylesheet" href="public style.css">
+</head>
+<body>
+
+    <div class="container">
+        <h1>PETTER LANCHES</h1>
+
+        <div class="tabs">
+            <button class="tab-button active" onclick="mostrarAba('pdv')">PDV (Venda)</button>
+            <button class="tab-button" onclick="mostrarAba('cadastro')">Cadastro de Produtos</button>
+            <button class="tab-button" onclick="mostrarAba('relatorios')">Relatórios</button>
+        </div>
+
+        <p id="mensagem"></p>
+        
+        <div id="pdv" class="tab-content active">
+            
+            <div class="pdv-col">
+                <h2>Cardápio</h2>
+                <div id="categorias-nav">
+                    </div>
+                <div id="cardapio">
+                    </div>
+            </div>
+
+            <div class="pdv-col">
+                <h2>Pedido Atual</h2>
+                <div class="form-group">
+                    <label for="nome-cliente">Cliente (Opcional):</label>
+                    <input type="text" id="nome-cliente" placeholder="Ex: João Silva ou Mesa 5">
+                </div>
+                <div id="pedido-lista">
+                    <p>O carrinho está vazio.</p>
+                </div>
+
+                <div class="total">
+                    <span>Total a Pagar:</span>
+                    R$ <span id="total-valor">0.00</span>
+                </div>
+
+                <hr style="margin: 15px 0;">
+                
+                <div class="form-group">
+                    <label for="forma-pagamento">Forma de Pagamento:</label>
+                    <select id="forma-pagamento" style="width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px;">
+                        <option value="Dinheiro">Dinheiro</option>
+                        <option value="Cartao_Debito">Cartão de Débito</option>
+                        <option value="Cartao_Credito">Cartão de Crédito</option>
+                        <option value="Pix">PIX</option>
+                        <option value="Outro">Outro</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="valor-pago">Valor Recebido (R$):</label>
+                    <input type="number" id="valor-pago" step="0.01" min="0" value="0.00" oninput="calcularTroco()">
+                </div>
+
+                <div class="total" style="font-size: 1.5em; margin-top: 10px;">
+                    <span>Troco:</span>
+                    R$ <span id="troco-valor" style="color: #28a745;">0.00</span> 
+                </div>
+
+                <button id="btn-imprimir">FINALIZAR PEDIDO</button>
+            </div>
+        </div>
+        <div id="cadastro" class="tab-content"> 
+            <h2>Cadastrar/Editar Produto</h2>
+            <div id="cadastro-form">
+                <input type="hidden" id="produto-id" value=""> 
+
+                <div style="display: flex; gap: 15px;">
+                    <div class="form-group" style="flex: 2;">
+                        <label for="produto-nome">Nome do Produto:</label>
+                        <input type="text" id="produto-nome" required>
+                    </div>
+                    
+                    <div class="form-group" style="flex: 1;">
+                        <label for="produto-categoria">Categoria:</label>
+                        <input type="text" id="produto-categoria" placeholder="Ex: Bebidas, Lanches, etc." required>
+                    </div>
+
+                    <div class="form-group" style="flex: 1;">
+                        <label for="produto-preco">Preço (R$):</label>
+                        <input type="number" id="produto-preco" step="0.01" required>
+                    </div>
+                </div>
+                <button id="btn-salvar-produto">Salvar Novo Produto</button> 
+                <button id="btn-cancelar-edicao" style="display: none; background-color: #6c757d; color: white; margin-top: 10px;">Cancelar Edição</button>
+
+            </div>
+
+            <hr style="margin: 30px 0; border-top: 1px solid #ced4da;">
+            
+            <h2>Produtos Cadastrados</h2>
+            <div id="lista-produtos-cadastrados">
+                <p>Carregando lista de produtos...</p>
+            </div>
+        </div>
+        <div id="relatorios" class="tab-content">
+            <h2>Vendas Registradas Hoje (Estorno Rápido)</h2>
+            <div id="vendas-do-dia">
+                <p>Carregando vendas...</p>
+            </div>
+            
+            <hr style="margin: 30px 0; border-top: 1px solid #ced4da;">
+
+            <h2>Relatório de Vendas (Geral)</h2>
+            <a href="/api/relatorio/csv" download="relatorio_vendas_diarias.csv" id="btn-baixar-csv">
+                <button>
+                    Baixar Relatório CSV para Excel
+                </button>
+            </a>
+        </div>
+        </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
