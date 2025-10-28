@@ -1,171 +1,102 @@
-const express = require('express');
-const { Pool } = require('pg'); // NOVO MÓDULO POSTGRES
-const fetch = require('node-fetch');
-const bodyParser = require('body-parser');
+// O CÓDIGO DEVE COMEÇAR COM FUNÇÕES DE NAVEGADOR, SEM NENHUM 'require'
 
-const app = express();
-// Usa a porta que o Render fornece, ou 3000 localmente
-const PORT = process.env.PORT || 3000;
+// Função que o HTML espera para mudar de aba (Corrige o ReferenceError: mostrarAba)
+function mostrarAba(abaId) {
+    // Esconda todas as abas
+    document.querySelectorAll('.aba-conteudo').forEach(aba => {
+        aba.style.display = 'none';
+    });
 
-// ** IMPORTANTE: COLOQUE SUA URL AQUI **
-const GOOGLE_SHEETS_API_URL = 'SUA_URL_DO_GOOGLE_APPS_SCRIPT_AQUI'; 
+    // Mostre a aba selecionada
+    const abaSelecionada = document.getElementById(abaId);
+    if (abaSelecionada) {
+        abaSelecionada.style.display = 'block';
+    }
 
-// 1. CONFIGURAÇÃO DO BANCO DE DADOS POSTGRES
-// ==========================================================
-// O Pool gerencia as conexões. Ele usa a DATABASE_URL do ambiente (Render).
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    // Configuração SSL necessária para conexões externas no Render
-    ssl: { rejectUnauthorized: false } 
-});
-
-// Função para garantir que as tabelas existam
-async function inicializarBanco() {
-    try {
-        // Tabela de Produtos
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS produtos (
-                id SERIAL PRIMARY KEY,
-                nome VARCHAR(255) NOT NULL,
-                preco REAL NOT NULL,
-                categoria VARCHAR(100) NOT NULL,
-                ativo BOOLEAN DEFAULT TRUE
-            );
-        `);
-        // Tabela de Vendas
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS vendas (
-                id SERIAL PRIMARY KEY,
-                produto_id INTEGER,
-                nome_produto VARCHAR(255) NOT NULL,
-                preco_unitario REAL NOT NULL,
-                quantidade INTEGER NOT NULL,
-                total_item REAL NOT NULL,
-                cliente VARCHAR(255),
-                data_venda TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        `);
-        console.log('Tabelas verificadas/criadas no Postgres.');
-    } catch (err) {
-        console.error('ERRO FATAL: Falha ao conectar ou inicializar o Postgres. Verifique a DATABASE_URL.', err);
-        // Em um erro fatal, o servidor deve parar, pois o banco é obrigatório
-        process.exit(1); 
+    // Se for a aba de produtos, carregue-os
+    if (abaId === 'aba-produtos') {
+        carregarProdutos();
     }
 }
 
-// 2. MIDDLEWARE E ARQUIVOS ESTÁTICOS
-// ==========================================================
-app.use(bodyParser.json());
-app.use(express.static('public')); // Serve o index.html e script.js
-// Assegura que o banco de dados esteja pronto antes de iniciar o servidor
-inicializarBanco();
+// Inicializa mostrando a primeira aba (ex: PDV)
+document.addEventListener('DOMContentLoaded', () => {
+    mostrarAba('aba-pdv');
+});
 
 
-// 3. ROTAS DE PRODUTOS (Adaptadas para pool.query)
-// ==========================================================
-
-// POST /api/produtos: Cria ou Edita Produto
-app.post('/api/produtos', async (req, res) => {
-    const { id, nome, preco, categoria } = req.body;
-
-    if (!nome || !preco || !categoria) {
-        return res.status(400).json({ success: false, message: 'Todos os campos são obrigatórios.' });
-    }
-
-    const precoFloat = parseFloat(preco);
-    
+// Função para carregar produtos do servidor (usando fetch nativo)
+async function carregarProdutos() {
     try {
-        if (id) {
-            // Edição (UPDATE)
-            const query = 'UPDATE produtos SET nome = $1, preco = $2, categoria = $3 WHERE id = $4';
-            await pool.query(query, [nome, precoFloat, categoria, id]);
-            res.json({ success: true, message: 'Produto atualizado com sucesso!' });
+        // A API está no mesmo host, então usamos um caminho relativo
+        const response = await fetch('/api/produtos'); 
+        const result = await response.json();
+
+        if (result.success) {
+            exibirProdutosNaTabela(result.data);
         } else {
-            // Novo Produto (INSERT)
-            const query = 'INSERT INTO produtos (nome, preco, categoria) VALUES ($1, $2, $3)';
-            await pool.query(query, [nome, precoFloat, categoria]);
-            res.json({ success: true, message: 'Produto salvo com sucesso!' });
+            console.error("Erro ao carregar produtos:", result.message);
         }
-    } catch (err) {
-        console.error('Erro no cadastro/edicao de produto:', err);
-        res.status(500).json({ success: false, message: err.message });
+    } catch (error) {
+        console.error("Erro de conexão com o servidor:", error);
     }
-});
+}
 
-// GET /api/produtos: Lista todos os produtos ativos
-app.get('/api/produtos', async (req, res) => {
+// Função para exibir os produtos (ADAPTE PARA SEUS ELEMENTOS HTML)
+function exibirProdutosNaTabela(produtos) {
+    const tabelaCorpo = document.getElementById('lista-produtos'); // Supondo que você tem este ID
+
+    if (tabelaCorpo) {
+        tabelaCorpo.innerHTML = ''; // Limpa a lista
+        produtos.forEach(produto => {
+            const linha = tabelaCorpo.insertRow();
+            linha.insertCell(0).textContent = produto.id;
+            linha.insertCell(1).textContent = produto.nome;
+            linha.insertCell(2).textContent = `R$ ${produto.preco.toFixed(2)}`;
+            linha.insertCell(3).textContent = produto.categoria;
+
+            // Adicione a lógica de edição/exclusão aqui
+        });
+    }
+}
+
+// Lógica para registrar um novo produto (Função principal que estava falhando)
+async function registrarProduto() {
+    const nome = document.getElementById('produto-nome').value;
+    const preco = document.getElementById('produto-preco').value;
+    const categoria = document.getElementById('produto-categoria').value;
+    
+    // Supondo que você tem um campo oculto para edição
+    const id = document.getElementById('produto-id').value || null; 
+
+    const produtoData = { id, nome, preco, categoria };
+
     try {
-        // Seleciona e ordena os dados
-        const result = await pool.query('SELECT * FROM produtos WHERE ativo = TRUE ORDER BY id ASC');
-        // O resultado da query do pg está em result.rows
-        res.json({ success: true, data: result.rows }); 
-    } catch (err) {
-        console.error('Erro ao listar produtos:', err);
-        res.status(500).json({ success: false, message: err.message });
-    }
-});
-
-// DELETE /api/produtos/:id: Inativa (Soft Delete) um produto
-app.delete('/api/produtos/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        await pool.query('UPDATE produtos SET ativo = FALSE WHERE id = $1', [id]);
-        res.json({ success: true, message: 'Produto inativado (deletado) com sucesso!' });
-    } catch (err) {
-        console.error('Erro ao inativar produto:', err);
-        res.status(500).json({ success: false, message: err.message });
-    }
-});
-
-// 4. ROTA DE VENDAS (Exemplo de Transação)
-// ==========================================================
-app.post('/api/pedido', async (req, res) => {
-    const { itens, total, cliente, formaPagamento, troco } = req.body;
-
-    if (!itens || itens.length === 0 || !total) {
-        return res.status(400).json({ success: false, message: 'O pedido não pode estar vazio.' });
-    }
-
-    // --- 1. REGISTRO LOCAL (Postgres - Usando pool.query em loop) ---
-    try {
-        // Prepara todas as inserções
-        const insertPromises = itens.map(item => {
-            const totalItem = item.qtd * item.preco;
-            const query = 'INSERT INTO vendas (produto_id, nome_produto, preco_unitario, quantidade, total_item, cliente) VALUES ($1, $2, $3, $4, $5, $6)';
-            return pool.query(query, [item.id, item.nome, item.preco, item.qtd, totalItem, cliente]);
+        const response = await fetch('/api/produtos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(produtoData)
         });
 
-        // Executa todas as inserções no Postgres
-        await Promise.all(insertPromises);
+        const result = await response.json();
         
-        // --- 2. ENVIO PARA GOOGLE SHEETS ---
-        const sheetsPayload = { /* ... seus dados de payload ... */ };
-        const sheetResponse = await fetch(GOOGLE_SHEETS_API_URL, {
-            // ... (restante da configuracao do fetch)
-        });
-
-        const sheetResult = await sheetResponse.json();
-
-        if (sheetResult.result === 'error') {
-            console.error('Erro ao enviar para Google Sheets:', sheetResult.message);
-            return res.json({ 
-                success: true, 
-                message: 'Venda registrada localmente! (ATENÇÃO: Erro no Google Sheets: ' + sheetResult.message + ')' 
-            });
+        if (result.success) {
+            alert(result.message);
+            // Recarrega a lista ou limpa o formulário
+            carregarProdutos(); 
+        } else {
+            alert(`Falha no cadastro: ${result.message}`);
         }
-
-        res.json({ success: true, message: 'Venda finalizada com sucesso (Local e Sheets)!' });
 
     } catch (error) {
-        console.error('Erro fatal ao processar o pedido:', error);
-        res.status(500).json({ success: false, message: 'Erro interno ao processar a venda.' });
+        alert("Erro de comunicação com a API.");
+        console.error("Erro POST /api/produtos:", error);
     }
-});
+}
 
+// Supondo que você tenha um botão de salvar que chama esta função no seu HTML
+// Ex: <button onclick="registrarProduto()">Salvar</button>
 
-// 5. INICIALIZAÇÃO DO SERVIDOR
-// ==========================================================
-app.listen(PORT, () => {
-    console.log(`PDV está pronto para rodar na porta ${PORT}`);
-    // O Render definirá o IP público automaticamente.
-});
+// *******************************************************************
+// ADICIONE AQUI TODAS AS OUTRAS FUNÇÕES DO SEU PDV (venda, impressão, etc.)
+// *******************************************************************
