@@ -1,39 +1,44 @@
 // O CÓDIGO DEVE COMEÇAR COM FUNÇÕES DE NAVEGADOR, SEM NENHUM 'require'
 
-// Função que o HTML espera para mudar de aba (Corrige o ReferenceError: mostrarAba)
+// Função que o HTML espera para mudar de aba
 function mostrarAba(abaId) {
-    // Esconda todas as abas
-    document.querySelectorAll('.aba-conteudo').forEach(aba => {
+    document.querySelectorAll('.tab-content').forEach(aba => {
         aba.style.display = 'none';
     });
+    document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.classList.remove('active');
+    });
 
-    // Mostre a aba selecionada
     const abaSelecionada = document.getElementById(abaId);
+    const botaoSelecionado = document.querySelector(`.tab-button[onclick="mostrarAba('${abaId}')"]`);
+
     if (abaSelecionada) {
         abaSelecionada.style.display = 'block';
     }
+    if (botaoSelecionado) {
+        botaoSelecionado.classList.add('active');
+    }
 
-    // Se for a aba de produtos, carregue-os
-    if (abaId === 'aba-produtos') {
-        carregarProdutos();
+    if (abaId === 'cadastro' || abaId === 'pdv') {
+        carregarProdutos(); 
     }
 }
 
-// Inicializa mostrando a primeira aba (ex: PDV)
+// Inicializa mostrando a primeira aba
 document.addEventListener('DOMContentLoaded', () => {
-    mostrarAba('aba-pdv');
+    mostrarAba('pdv');
 });
 
 
 // Função para carregar produtos do servidor (usando fetch nativo)
 async function carregarProdutos() {
     try {
-        // A API está no mesmo host, então usamos um caminho relativo
         const response = await fetch('/api/produtos'); 
         const result = await response.json();
 
         if (result.success) {
-            exibirProdutosNaTabela(result.data);
+            exibirProdutosNaTabela(result.data); 
+            exibirProdutosNoCardapio(result.data); // <--- NOVO: Renderiza no Cardápio PDV
         } else {
             console.error("Erro ao carregar produtos:", result.message);
         }
@@ -42,34 +47,72 @@ async function carregarProdutos() {
     }
 }
 
-// Função para exibir os produtos (ADAPTE PARA SEUS ELEMENTOS HTML)
+// --- FUNÇÕES DE RENDERIZAÇÃO ---
+
+// Função 1: Exibir os produtos na tabela da ABA CADASTRO
 function exibirProdutosNaTabela(produtos) {
-    const tabelaCorpo = document.getElementById('lista-produtos'); // Supondo que você tem este ID
+    const listaProdutosCadastrados = document.getElementById('lista-produtos-cadastrados');
 
-    if (tabelaCorpo) {
-        tabelaCorpo.innerHTML = ''; // Limpa a lista
+    if (listaProdutosCadastrados) {
+        let html = '<table><thead><tr><th>ID</th><th>Nome</th><th>Preço</th><th>Categoria</th><th>Ações</th></tr></thead><tbody>';
+        
         produtos.forEach(produto => {
-            const linha = tabelaCorpo.insertRow();
-            linha.insertCell(0).textContent = produto.id;
-            linha.insertCell(1).textContent = produto.nome;
-            linha.insertCell(2).textContent = `R$ ${produto.preco.toFixed(2)}`;
-            linha.insertCell(3).textContent = produto.categoria;
-
-            // Adicione a lógica de edição/exclusão aqui
+            html += `
+                <tr>
+                    <td>${produto.id}</td>
+                    <td>${produto.nome}</td>
+                    <td>R$ ${produto.preco.toFixed(2)}</td>
+                    <td>${produto.categoria}</td>
+                    <td>
+                        <button onclick="editarProduto(${produto.id})">Editar</button>
+                        <button onclick="inativarProduto(${produto.id})" style="background-color: #dc3545;">Inativar</button>
+                    </td>
+                </tr>
+            `;
         });
+
+        html += '</tbody></table>';
+        listaProdutosCadastrados.innerHTML = html;
     }
 }
 
-// Lógica para registrar um novo produto (Função principal que estava falhando)
+// Função 2: Exibir os produtos no Cardápio da ABA PDV (VENDAS)
+function exibirProdutosNoCardapio(produtos) {
+    const cardapioDiv = document.getElementById('cardapio');
+    if (!cardapioDiv) return;
+
+    cardapioDiv.innerHTML = ''; // Limpa o cardápio
+
+    produtos.forEach(produto => {
+        const produtoElement = document.createElement('button');
+        
+        produtoElement.textContent = `${produto.nome} - R$ ${produto.preco.toFixed(2)}`;
+        produtoElement.className = 'produto-card'; 
+        
+        produtoElement.onclick = () => {
+             // Quando esta função estiver pronta, ela adicionará ao carrinho
+             // addAoCarrinho(produto);
+             alert(`Produto ${produto.nome} (R$ ${produto.preco.toFixed(2)}) adicionado ao carrinho!`);
+        };
+        
+        cardapioDiv.appendChild(produtoElement);
+    });
+}
+
+
+// Lógica para registrar um novo produto (Função que o botão Salvar chama)
 async function registrarProduto() {
     const nome = document.getElementById('produto-nome').value;
     const preco = document.getElementById('produto-preco').value;
     const categoria = document.getElementById('produto-categoria').value;
-    
-    // Supondo que você tem um campo oculto para edição
     const id = document.getElementById('produto-id').value || null; 
 
     const produtoData = { id, nome, preco, categoria };
+
+    if (!nome || !preco || !categoria) {
+        alert("Por favor, preencha todos os campos do produto.");
+        return; 
+    }
 
     try {
         const response = await fetch('/api/produtos', {
@@ -82,21 +125,14 @@ async function registrarProduto() {
         
         if (result.success) {
             alert(result.message);
-            // Recarrega a lista ou limpa o formulário
             carregarProdutos(); 
         } else {
-            alert(`Falha no cadastro: ${result.message}`);
+            alert(`Falha no cadastro: ${result.message}. Verifique os logs do servidor.`);
         }
 
     } catch (error) {
-        alert("Erro de comunicação com a API.");
+        alert("Erro de comunicação com a API. Verifique a conexão com o servidor.");
         console.error("Erro POST /api/produtos:", error);
     }
 }
-
-// Supondo que você tenha um botão de salvar que chama esta função no seu HTML
-// Ex: <button onclick="registrarProduto()">Salvar</button>
-
-// *******************************************************************
-// ADICIONE AQUI TODAS AS OUTRAS FUNÇÕES DO SEU PDV (venda, impressão, etc.)
-// *******************************************************************
+// OBS: Você precisará definir as funções: editarProduto, inativarProduto, calcularTroco, addAoCarrinho, etc.
