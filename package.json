@@ -1,11 +1,10 @@
 {
-  "name": "minipdv_local",
+  "name": "minipdv_cloud",
   "version": "1.0.0",
-  "description": "Sistema PDV Simples",
+  "description": "Sistema PDV Simples (Cloud)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "build-exe": "pkg ."
+    "start": "node server.js"
   },
   "keywords": [],
   "author": "",
@@ -14,25 +13,8 @@
     "body-parser": "^2.2.0",
     "csv-stringify": "^6.6.0",
     "express": "^5.1.0",
-    "node-fetch": "^2.6.7",
+    "node-fetch": "2.6.7",
     "node-thermal-printer": "^4.5.0",
-    "pg": "^8.16.3"
-  },
-  "devDependencies": {
-    "pkg": "^5.8.1"
-  },
-  "bin": "server.js",
-  "pkg": {
-    "scripts": [
-      "server.js"
-    ],
-    "assets": [
-      "public/**/*",
-      "pdv.db",
-      "node_modules/sqlite3/**/*"
-    ],
-    "targets": [
-      "node18-win-x64"
-    ]
+    "pg": "^8.11.3"  
   }
 }
