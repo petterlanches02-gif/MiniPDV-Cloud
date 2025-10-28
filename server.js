@@ -1,66 +1,70 @@
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg'); // MÓDULO POSTGRES
 const fetch = require('node-fetch');
-const path = require('path'); // MÓDULO NECESSÁRIO PARA CORRIGIR O PATH DO EXE
 const bodyParser = require('body-parser');
 
 const app = express();
-const PORT = 3000;
-
-// Configuração do Banco de Dados
-// ==========================================================
-// CORREÇÃO FINAL: Usa path.resolve para garantir que o executável encontre o pdv.db
-// process.cwd() retorna o diretório onde o .exe está sendo executado.
-const dbPath = path.resolve(process.cwd(), 'pdv.db');
-
-// Flags para abrir ou criar o arquivo
-const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
-    if (err) {
-        // Loga o erro, mas o processo continua para que o terminal não feche.
-        console.error('Erro fatal ao abrir o banco de dados. Verifique permissões:', err.message);
-    } else {
-        console.log('Conectado ao banco de dados SQLite.');
-        
-        // Criação da tabela de PRODUTOS
-        db.run(`
-            CREATE TABLE IF NOT EXISTS produtos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nome TEXT NOT NULL,
-                preco REAL NOT NULL,
-                categoria TEXT NOT NULL,
-                ativo INTEGER DEFAULT 1
-            )
-        `);
-        
-        // Criação da tabela de VENDAS (Registro Detalhado)
-        db.run(`
-            CREATE TABLE IF NOT EXISTS vendas (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                produto_id INTEGER,
-                nome_produto TEXT NOT NULL,
-                preco_unitario REAL NOT NULL,
-                quantidade INTEGER NOT NULL,
-                total_item REAL NOT NULL,
-                cliente TEXT,
-                data_venda DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
-    }
-});
-// ==========================================================
+// Usa a porta que o Render fornece, ou 3000 localmente
+const PORT = process.env.PORT || 3000;
 
 // ** IMPORTANTE: COLOQUE SUA URL AQUI **
 const GOOGLE_SHEETS_API_URL = 'SUA_URL_DO_GOOGLE_APPS_SCRIPT_AQUI'; 
 
-// Middleware
-app.use(bodyParser.json());
-// Servir arquivos estáticos da pasta 'public' (HTML, CSS, JS)
-app.use(express.static('public'));
+// 1. CONFIGURAÇÃO DO BANCO DE DADOS POSTGRES
+// ==========================================================
+// O Pool usa a DATABASE_URL do ambiente (Render)
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    // Configuração SSL necessária para conexões externas no Render
+    ssl: { rejectUnauthorized: false } 
+});
 
-// ------------------------------------------------------------------
-// --- ROTAS DE PRODUTOS (CRUD) ---
-// ------------------------------------------------------------------
-app.post('/api/produtos', (req, res) => {
+// Função para garantir que as tabelas existam
+async function inicializarBanco() {
+    try {
+        // Tabela de Produtos
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS produtos (
+                id SERIAL PRIMARY KEY,
+                nome VARCHAR(255) NOT NULL,
+                preco REAL NOT NULL,
+                categoria VARCHAR(100) NOT NULL,
+                ativo BOOLEAN DEFAULT TRUE
+            );
+        `);
+        // Tabela de Vendas
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS vendas (
+                id SERIAL PRIMARY KEY,
+                produto_id INTEGER,
+                nome_produto VARCHAR(255) NOT NULL,
+                preco_unitario REAL NOT NULL,
+                quantidade INTEGER NOT NULL,
+                total_item REAL NOT NULL,
+                cliente VARCHAR(255),
+                data_venda TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        console.log('Tabelas verificadas/criadas no Postgres.');
+    } catch (err) {
+        console.error('ERRO FATAL: Falha ao conectar ou inicializar o Postgres. Verifique a DATABASE_URL.', err);
+        process.exit(1); 
+    }
+}
+
+// 2. MIDDLEWARE E ARQUIVOS ESTÁTICOS
+// ==========================================================
+app.use(bodyParser.json());
+app.use(express.static('public')); // Serve o index.html e script.js
+// Assegura que o banco de dados esteja pronto antes de iniciar o servidor
+inicializarBanco();
+
+
+// 3. ROTAS DE PRODUTOS (Adaptadas para pool.query)
+// ==========================================================
+
+// POST /api/produtos: Cria ou Edita Produto
+app.post('/api/produtos', async (req, res) => {
     const { id, nome, preco, categoria } = req.body;
 
     if (!nome || !preco || !categoria) {
@@ -68,47 +72,50 @@ app.post('/api/produtos', (req, res) => {
     }
 
     const precoFloat = parseFloat(preco);
-    if (id) {
-        // Edição
-        db.run('UPDATE produtos SET nome = ?, preco = ?, categoria = ? WHERE id = ?',
-            [nome, precoFloat, categoria, id],
-            function(err) {
-                if (err) return res.status(500).json({ success: false, message: err.message });
-                res.json({ success: true, message: 'Produto atualizado com sucesso!' });
-            }
-        );
-    } else {
-        // Novo Produto
-        db.run('INSERT INTO produtos (nome, preco, categoria) VALUES (?, ?, ?)',
-            [nome, precoFloat, categoria],
-            function(err) {
-                if (err) return res.status(500).json({ success: false, message: err.message });
-                res.json({ success: true, message: 'Produto salvo com sucesso!' });
-            }
-        );
+    
+    try {
+        if (id) {
+            // Edição (UPDATE)
+            const query = 'UPDATE produtos SET nome = $1, preco = $2, categoria = $3 WHERE id = $4';
+            await pool.query(query, [nome, precoFloat, categoria, id]);
+            res.json({ success: true, message: 'Produto atualizado com sucesso!' });
+        } else {
+            // Novo Produto (INSERT)
+            const query = 'INSERT INTO produtos (nome, preco, categoria) VALUES ($1, $2, $3)';
+            await pool.query(query, [nome, precoFloat, categoria]);
+            res.json({ success: true, message: 'Produto salvo com sucesso!' });
+        }
+    } catch (err) {
+        console.error('Erro no cadastro/edicao de produto:', err);
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 
-app.get('/api/produtos', (req, res) => {
-    db.all('SELECT * FROM produtos WHERE ativo = 1', [], (err, rows) => {
-        if (err) return res.status(500).json({ success: false, message: err.message });
-        res.json({ success: true, data: rows });
-    });
+// GET /api/produtos: Lista todos os produtos ativos
+app.get('/api/produtos', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM produtos WHERE ativo = TRUE ORDER BY id ASC');
+        res.json({ success: true, data: result.rows }); 
+    } catch (err) {
+        console.error('Erro ao listar produtos:', err);
+        res.status(500).json({ success: false, message: err.message });
+    }
 });
 
-app.delete('/api/produtos/:id', (req, res) => {
-    const id = req.params.id;
-    // Inativar (ativo = 0) em vez de deletar para manter o histórico
-    db.run('UPDATE produtos SET ativo = 0 WHERE id = ?', id, function(err) {
-        if (err) return res.status(500).json({ success: false, message: err.message });
+// DELETE /api/produtos/:id: Inativa (Soft Delete) um produto
+app.delete('/api/produtos/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.query('UPDATE produtos SET ativo = FALSE WHERE id = $1', [id]);
         res.json({ success: true, message: 'Produto inativado (deletado) com sucesso!' });
-    });
+    } catch (err) {
+        console.error('Erro ao inativar produto:', err);
+        res.status(500).json({ success: false, message: err.message });
+    }
 });
 
-
-// ------------------------------------------------------------------
-// --- ROTA DE VENDAS (PDV) ---
-// ------------------------------------------------------------------
+// 4. ROTA DE VENDAS (Exemplo de Transação)
+// ==========================================================
 app.post('/api/pedido', async (req, res) => {
     const { itens, total, cliente, formaPagamento, troco } = req.body;
 
@@ -116,36 +123,18 @@ app.post('/api/pedido', async (req, res) => {
         return res.status(400).json({ success: false, message: 'O pedido não pode estar vazio.' });
     }
 
-    // 1. Registro Local (SQLite - Detalhado, item por item)
-    const dbPromises = itens.map(item => {
-        const totalItem = item.qtd * item.preco;
-        return new Promise((resolve, reject) => {
-            db.run(
-                'INSERT INTO vendas (produto_id, nome_produto, preco_unitario, quantidade, total_item, cliente) VALUES (?, ?, ?, ?, ?, ?)',
-                [item.id, item.nome, item.preco, item.qtd, totalItem, cliente],
-                function(err) {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(this.lastID);
-                    }
-                }
-            );
-        });
-    });
-
+    // --- 1. REGISTRO LOCAL (Postgres) ---
     try {
-        await Promise.all(dbPromises);
-        
-        // 2. Envio para o Google Sheets (Registro Consolidado)
-        const sheetsPayload = {
-            itens: itens,
-            total: total,
-            nomeCliente: cliente,
-            formaPagamento: formaPagamento,
-            troco: troco
-        };
+        const insertPromises = itens.map(item => {
+            const totalItem = item.qtd * item.preco;
+            const query = 'INSERT INTO vendas (produto_id, nome_produto, preco_unitario, quantidade, total_item, cliente) VALUES ($1, $2, $3, $4, $5, $6)';
+            return pool.query(query, [item.id, item.nome, item.preco, item.qtd, totalItem, cliente]);
+        });
 
+        await Promise.all(insertPromises);
+        
+        // --- 2. ENVIO PARA GOOGLE SHEETS ---
+        const sheetsPayload = { /* ... seus dados de payload ... */ };
         const sheetResponse = await fetch(GOOGLE_SHEETS_API_URL, {
             method: 'POST',
             body: JSON.stringify(sheetsPayload),
@@ -156,7 +145,6 @@ app.post('/api/pedido', async (req, res) => {
 
         if (sheetResult.result === 'error') {
             console.error('Erro ao enviar para Google Sheets:', sheetResult.message);
-            // Retorna sucesso LOCAL, mas alerta o usuário sobre o erro remoto
             return res.json({ 
                 success: true, 
                 message: 'Venda registrada localmente! (ATENÇÃO: Erro no Google Sheets: ' + sheetResult.message + ')' 
@@ -172,38 +160,8 @@ app.post('/api/pedido', async (req, res) => {
 });
 
 
-// ------------------------------------------------------------------
-// --- ROTA DE RELATÓRIOS ---
-// ------------------------------------------------------------------
-app.get('/api/relatorios/vendas', (req, res) => {
-    const { start_date, end_date } = req.query;
-    
-    let query = 'SELECT * FROM vendas ORDER BY data_venda DESC';
-    const params = [];
-
-    // Filtro de data
-    if (start_date && end_date) {
-        query = 'SELECT * FROM vendas WHERE data_venda BETWEEN ? AND ? ORDER BY data_venda DESC';
-        params.push(start_date + ' 00:00:00');
-        params.push(end_date + ' 23:59:59');
-    }
-
-    db.all(query, params, (err, rows) => {
-        if (err) return res.status(500).json({ success: false, message: err.message });
-        res.json({ success: true, data: rows });
-    });
-});
-
-
-// ------------------------------------------------------------------
-// --- INICIALIZAÇÃO DO SERVIDOR ---
-// ------------------------------------------------------------------
+// 5. INICIALIZAÇÃO DO SERVIDOR
+// ==========================================================
 app.listen(PORT, () => {
-    console.log(`PDV rodando em http://localhost:${PORT}`);
-    // Exibe IP local para acesso em outros dispositivos
-    require('dns').lookup(require('os').hostname(), (err, add, fam) => {
-        if (add) {
-            console.log(`Acesse também em: http://${add}:${PORT} (pela rede local)`);
-        }
-    });
+    console.log(`PDV está pronto para rodar na porta ${PORT}`);
 });
