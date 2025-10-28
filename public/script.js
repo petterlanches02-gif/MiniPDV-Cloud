@@ -1,6 +1,6 @@
 // VARIÁVEIS GLOBAIS DE ESTADO
-let produtosCadastrados = []; // Mantém a lista atualizada para Edição
-let pedidoAtual = [];       // O array que representa o Carrinho de Vendas
+let produtosCadastrados = []; 
+let pedidoAtual = [];       
 
 
 // =================================================================
@@ -29,13 +29,19 @@ function mostrarAba(abaId) {
         carregarProdutos();
     }
     if (abaId === 'pdv') {
-        atualizarCarrinhoDisplay(); // Garante que o carrinho aparece se já houver itens
+        atualizarCarrinhoDisplay(); 
     }
 }
 
-// Inicializa mostrando a primeira aba (PDV)
+// Inicialização: Conecta o botão de finalizar venda
 document.addEventListener('DOMContentLoaded', () => {
     mostrarAba('pdv');
+    
+    // Conecta o botão FINALIZAR PEDIDO (btn-imprimir) à função finalizarVenda
+    const btnFinalizar = document.getElementById('btn-imprimir');
+    if (btnFinalizar) {
+        btnFinalizar.onclick = finalizarVenda;
+    }
 });
 
 
@@ -46,7 +52,7 @@ async function carregarProdutos() {
         const result = await response.json();
 
         if (result.success) {
-            produtosCadastrados = result.data; // ATUALIZA A VARIÁVEL GLOBAL
+            produtosCadastrados = result.data; 
             
             exibirProdutosNaTabela(produtosCadastrados); 
             exibirProdutosNoCardapio(produtosCadastrados); 
@@ -103,7 +109,6 @@ function exibirProdutosNoCardapio(produtos) {
         produtoElement.textContent = `${produto.nome} - R$ ${produto.preco.toFixed(2)}`;
         produtoElement.className = 'produto-card'; 
         
-        // CHAMA A FUNÇÃO DE ADIÇÃO AO CARRINHO
         produtoElement.onclick = () => {
              addAoCarrinho(produto);
         };
@@ -114,7 +119,6 @@ function exibirProdutosNoCardapio(produtos) {
 
 // Função 3: Renderizar e somar o Carrinho
 function atualizarCarrinhoDisplay() {
-    // No HTML, você tem #pedido-lista, mas o código usa #carrinho-lista. Vamos usar #pedido-lista.
     const listaElement = document.getElementById('pedido-lista'); 
     const totalElement = document.getElementById('total-valor');
     let totalVenda = 0;
@@ -122,7 +126,7 @@ function atualizarCarrinhoDisplay() {
     if (!listaElement) return;
 
     if (pedidoAtual.length === 0) {
-        listaElement.innerHTML = '<p>O carrinho está vazio.</p>';
+        listaElement.innerHTML = '<p style="font-style: italic; color: #6c757d;">O carrinho está vazio.</p>';
     } else {
         listaElement.innerHTML = '';
     }
@@ -134,7 +138,6 @@ function atualizarCarrinhoDisplay() {
         const listItem = document.createElement('li');
         listItem.className = 'item-pedido';
         
-        // Qtd x Nome (Preço unit) = Subtotal
         listItem.textContent = `${item.quantidade}x ${item.nome} (R$ ${item.preco.toFixed(2)}) = R$ ${subtotal.toFixed(2)}`;
         
         const removeButton = document.createElement('button');
@@ -146,12 +149,10 @@ function atualizarCarrinhoDisplay() {
         listaElement.appendChild(listItem);
     });
 
-    // Atualiza o total
     if (totalElement) {
         totalElement.textContent = totalVenda.toFixed(2);
     }
     
-    // Atualiza o valor pago para calcular o troco (se o input estiver preenchido)
     calcularTroco();
 }
 
@@ -160,15 +161,70 @@ function atualizarCarrinhoDisplay() {
 //                     FUNÇÕES DE AÇÃO E LÓGICA
 // =================================================================
 
-// 1. Adiciona ou incrementa o produto ao carrinho
+// 1. Finaliza a venda (Conecta ao botão FINALIZAR PEDIDO)
+async function finalizarVenda() {
+    if (pedidoAtual.length === 0) {
+        alert("O carrinho está vazio. Adicione produtos antes de finalizar a venda.");
+        return;
+    }
+
+    const total = parseFloat(document.getElementById('total-valor').textContent) || 0;
+    const cliente = document.getElementById('nome-cliente').value;
+    const formaPagamento = document.getElementById('forma-pagamento').value;
+    const valorPago = parseFloat(document.getElementById('valor-pago').value) || 0;
+    const troco = parseFloat(document.getElementById('troco-valor').textContent) || 0;
+    
+    // Validação de pagamento em dinheiro
+    if (valorPago < total && formaPagamento === 'Dinheiro') {
+        alert("O valor pago é insuficiente para a venda em dinheiro.");
+        return;
+    }
+
+    const pedidoData = {
+        itens: pedidoAtual,
+        total: total,
+        cliente: cliente || 'Consumidor Final',
+        formaPagamento: formaPagamento,
+        valorPago: valorPago,
+        troco: troco
+    };
+
+    try {
+        const response = await fetch('/api/pedido', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pedidoData)
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            // MENSAGEM DE SUCESSO AGORA DEVE APARECER
+            alert(result.message); 
+            
+            pedidoAtual = []; // Limpa o carrinho
+            document.getElementById('valor-pago').value = '0.00'; // Limpa pagamento
+            document.getElementById('nome-cliente').value = ''; // Limpa cliente
+            atualizarCarrinhoDisplay(); // Atualiza display
+            calcularTroco(); // Recalcula o troco para 0.00
+        } else {
+            alert(`Falha ao finalizar venda: ${result.message}`);
+        }
+
+    } catch (error) {
+        console.error("Erro de comunicação ao finalizar o pedido:", error);
+        alert("Erro de comunicação com o servidor ao finalizar a venda.");
+    }
+}
+
+
+// 2. Adiciona ou incrementa o produto ao carrinho
 function addAoCarrinho(produto) {
     const itemIndex = pedidoAtual.findIndex(item => item.id === produto.id);
 
     if (itemIndex > -1) {
-        // Incrementa a quantidade
         pedidoAtual[itemIndex].quantidade += 1;
     } else {
-        // Adiciona novo
         pedidoAtual.push({
             id: produto.id,
             nome: produto.nome,
@@ -180,19 +236,17 @@ function addAoCarrinho(produto) {
     atualizarCarrinhoDisplay();
 }
 
-// 2. Remove ou decrementa um item do carrinho
+// 3. Remove ou decrementa um item do carrinho
 function removerItemDoCarrinho(index) {
     if (pedidoAtual[index].quantidade > 1) {
-        // Decrementa
         pedidoAtual[index].quantidade -= 1;
     } else {
-        // Remove o item inteiro
         pedidoAtual.splice(index, 1);
     }
     atualizarCarrinhoDisplay();
 }
 
-// 3. Calcula e exibe o troco (chamada pelo input 'valor-pago')
+// 4. Calcula e exibe o troco
 function calcularTroco() {
     const totalValorSpan = document.getElementById('total-valor');
     const valorPagoInput = document.getElementById('valor-pago');
@@ -205,12 +259,13 @@ function calcularTroco() {
 
     if (trocoValorSpan) {
         trocoValorSpan.textContent = Math.max(0, troco).toFixed(2);
+        // Colore o troco (verde se positivo, vermelho se insuficiente)
         trocoValorSpan.style.color = troco >= 0 ? '#28a745' : '#dc3545';
     }
 }
 
 
-// 4. Limpa o formulário de cadastro e reseta o botão
+// 5. Limpa o formulário de cadastro e reseta o botão
 function limparFormularioCadastro() {
     document.getElementById('produto-id').value = '';
     document.getElementById('produto-nome').value = '';
@@ -222,7 +277,7 @@ function limparFormularioCadastro() {
 }
 
 
-// 5. Lógica para editar um produto (preenche o formulário)
+// 6. Lógica para editar um produto (preenche o formulário)
 function editarProduto(id) {
     const produto = produtosCadastrados.find(p => p.id === id);
 
@@ -243,7 +298,7 @@ function editarProduto(id) {
 }
 
 
-// 6. Lógica para inativar (deletar soft delete) um produto
+// 7. Lógica para inativar (deletar soft delete) um produto
 async function inativarProduto(id) {
     if (!confirm(`Tem certeza que deseja INATIVAR o produto ID ${id}? Ele será removido da lista de vendas.`)) {
         return;
@@ -268,7 +323,7 @@ async function inativarProduto(id) {
 }
 
 
-// 7. Lógica para registrar/atualizar um produto (POST/UPDATE)
+// 8. Lógica para registrar/atualizar um produto (POST/UPDATE)
 async function registrarProduto() {
     const nome = document.getElementById('produto-nome').value;
     const preco = parseFloat(document.getElementById('produto-preco').value.replace(',', '.')) || 0;
