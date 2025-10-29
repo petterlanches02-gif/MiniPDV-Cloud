@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDV</title>
-    <link rel="stylesheet" href="public style.css">
+    <link rel="stylesheet" href="style.css"> 
 </head>
 <body>
 
@@ -24,7 +24,7 @@
             <div class="pdv-col">
                 <h2>Cardápio</h2>
                 <div id="categorias-nav">
-                    </div>
+                </div>
                 <div id="cardapio">
                     <p>Carregando produtos...</p>
                 </div>
@@ -65,12 +65,13 @@
 
                 <div class="total" style="font-size: 1.5em; margin-top: 10px;">
                     <span>Troco:</span>
-                    R$ <span id="troco-valor" style="color: #28a745;">0.00</span> 
+                    R$ <span id="troco-valor" style="color: var(--cor-sucesso);">0.00</span> 
                 </div>
 
                 <button id="btn-imprimir">FINALIZAR PEDIDO</button>
             </div>
         </div>
+        
         <div id="cadastro" class="tab-content"> 
             <h2>Cadastrar/Editar Produto</h2>
             <div id="cadastro-form">
@@ -97,30 +98,31 @@
 
             </div>
 
-            <hr style="margin: 30px 0; border-top: 1px solid #ced4da;">
+            <hr style="margin: 30px 0; border-top: 1px solid var(--cor-borda);">
             
             <h2>Produtos Cadastrados</h2>
             <div id="lista-produtos-cadastrados">
                 <p>Carregando lista de produtos...</p>
             </div>
         </div>
+        
         <div id="relatorios" class="tab-content">
-            <h2>Vendas Registradas</h2>
+            <h2>Relatório de Vendas (Hoje)</h2>
             <div id="vendas-do-dia">
                 <p>Carregando vendas...</p>
             </div>
             
-            <hr style="margin: 30px 0; border-top: 1px solid #ced4da;">
+            <hr style="margin: 30px 0; border-top: 1px solid var(--cor-borda);">
 
-            <h2>Relatório de Vendas (Geral)</h2>
+            <h2>Exportar</h2>
             <a href="/api/relatorio/csv" download="relatorio_vendas_diarias.csv" id="btn-baixar-csv">
                 <button>
                     Baixar Relatório CSV para Excel
                 </button>
             </a>
         </div>
-        </div>
+    </div>
 
-<script src="script.js"></script> 
+    <script src="script.js"></script> 
 </body>
 </html>
