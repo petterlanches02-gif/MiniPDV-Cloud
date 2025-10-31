@@ -1,94 +1,96 @@
 const express = require('express');
-const { Pool } = require('pg'); 
+const mongoose = require('mongoose'); // Módulo Mongoose para MongoDB
 const bodyParser = require('body-parser');
+const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+// Usa a porta fornecida pelo Render (process.env.PORT) ou a 3000 localmente
+const PORT = process.env.PORT || 3000; 
 
-// URL DEVE SER SUBSTITUÍDA PELO SEU ENDPOINT REAL
-const GOOGLE_SHEETS_API_URL = 'SUA_URL_DO_GOOGLE_APPS_SCRIPT_AQUI'; 
+// --- 1. CONFIGURAÇÃO DO BANCO DE DADOS MONGODB (Mongoose) ---
+// O MONGODB_URI DEVE SER DEFINIDO nas Variáveis de Ambiente do Render
+const MONGODB_URI = process.env.MONGODB_URI;
 
-// 1. CONFIGURAÇÃO DO BANCO DE DADOS POSTGRES
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false } 
-});
-
-// ... (início do seu server.js)
-
-async function inicializarBanco() {
-    try {
-        // --- INÍCIO DO CÓDIGO TEMPORÁRIO PARA CORREÇÃO DE SCHEMA ---
-        if (process.env.FORCE_SCHEMA_FIX === 'true') {
-            console.log('ATENÇÃO: EXECUTANDO LIMPEZA DE SCHEMA FORÇADA. APAGANDO TABELAS...');
-            // Excluímos as duas tabelas para garantir a limpeza completa
-            await pool.query('DROP TABLE IF EXISTS vendas CASCADE;');
-            await pool.query('DROP TABLE IF EXISTS produtos CASCADE;'); 
-            console.log('Tabelas antigas removidas com sucesso.');
-        }
-        // --- FIM DO CÓDIGO TEMPORÁRIO ---
-
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS produtos (
-                id SERIAL PRIMARY KEY,
-                nome VARCHAR(255) NOT NULL,
-                preco REAL NOT NULL,
-                categoria VARCHAR(100) NOT NULL,
-                ativo BOOLEAN DEFAULT TRUE
-            );
-        `);
-        // TABELA VENDAS SERÁ RECRIADA CORRETAMENTE
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS vendas (
-                id SERIAL PRIMARY KEY,
-                item_pedido JSONB NOT NULL,
-                total_venda REAL NOT NULL, 
-                cliente VARCHAR(255),
-                data_venda TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                forma_pagamento VARCHAR(100), 
-                valor_pago REAL,              
-                troco REAL                    
-            );
-        `);
-        console.log('Tabelas verificadas/criadas no Postgres.');
-    } catch (err) {
-       // ... (restante do seu bloco catch)
-    }
+// Garante que a URL está presente
+if (!MONGODB_URI) {
+    console.error("FATAL ERROR: MONGODB_URI não está definida nas variáveis de ambiente!");
+    process.exit(1); 
 }
 
-// 2. MIDDLEWARE E ARQUIVOS ESTÁTICOS
+mongoose.connect(MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+})
+.then(() => {
+    console.log('🟢 Conexão com o MongoDB estabelecida com sucesso.');
+    // Inicia o servidor somente após a conexão com o banco de dados
+    iniciarServidor(); 
+})
+.catch(err => {
+    console.error('🔴 Erro ao conectar ao MongoDB:', err.message);
+    // Encerra o processo se a conexão com o DB falhar
+    process.exit(1); 
+});
+
+// --- 2. DEFINIÇÃO DOS SCHEMAS (Modelos) ---
+
+// Schema para Produtos
+const ProdutoSchema = new mongoose.Schema({
+    nome: { type: String, required: true },
+    preco: { type: Number, required: true },
+    categoria: { type: String, required: true },
+    ativo: { type: Boolean, default: true },
+});
+const Produto = mongoose.model('Produto', ProdutoSchema);
+
+// Schema para Vendas
+const VendaSchema = new mongoose.Schema({
+    itens: { type: Array, required: true }, // Array de itens do pedido
+    total_venda: { type: Number, required: true },
+    cliente: { type: String, default: 'Cliente Padrão' },
+    data_venda: { type: Date, default: Date.now },
+    forma_pagamento: { type: String },
+    valor_pago: { type: Number },
+    troco: { type: Number },
+});
+const Venda = mongoose.model('Venda', VendaSchema);
+
+
+// --- 3. MIDDLEWARE E ARQUIVOS ESTÁTICOS ---
+
 app.use(bodyParser.json());
-// Certifique-se de que sua pasta de arquivos estáticos é 'public'
-app.use(express.static('public')); 
-inicializarBanco();
+// Servir arquivos estáticos (HTML/CSS/JS) da pasta 'public'
+app.use(express.static(path.join(__dirname, 'public'))); 
 
 
-// 3. ROTAS DE PRODUTOS (GET)
+// 4. ROTAS DE PRODUTOS (GET)
 app.get('/api/produtos', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM produtos WHERE ativo = TRUE ORDER BY id ASC');
-        res.json({ success: true, data: result.rows });
+        // Busca apenas produtos ativos
+        const produtos = await Produto.find({ ativo: true }).sort({ _id: 1 }); 
+        res.json({ success: true, data: produtos });
     } catch (err) {
         console.error('Erro ao buscar produtos:', err);
         res.status(500).json({ success: false, message: 'Erro interno do servidor ao buscar produtos.' });
     }
 });
 
-// 4. ROTA POST/UPDATE PRODUTO
+// 5. ROTA POST/UPDATE PRODUTO
 app.post('/api/produtos', async (req, res) => {
-    const { id, nome, preco, categoria } = req.body;
+    const { _id, nome, preco, categoria } = req.body; // Usa _id do MongoDB
     if (!nome || !preco || !categoria) {
         return res.status(400).json({ success: false, message: 'Todos os campos são obrigatórios.' });
     }
     const precoFloat = parseFloat(preco);
     try {
-        if (id) {
-            const query = 'UPDATE produtos SET nome = $1, preco = $2, categoria = $3 WHERE id = $4';
-            await pool.query(query, [nome, precoFloat, categoria, id]);
+        if (_id) {
+            // Lógica de ATUALIZAÇÃO (UPDATE)
+            await Produto.findByIdAndUpdate(_id, { nome, preco: precoFloat, categoria });
             res.json({ success: true, message: 'Produto atualizado com sucesso!' });
         } else {
-            const query = 'INSERT INTO produtos (nome, preco, categoria) VALUES ($1, $2, $3)';
-            await pool.query(query, [nome, precoFloat, categoria]);
+            // Lógica de INSERÇÃO (CREATE)
+            const novoProduto = new Produto({ nome, preco: precoFloat, categoria });
+            await novoProduto.save();
             res.json({ success: true, message: 'Produto cadastrado com sucesso!' });
         }
     } catch (err) {
@@ -97,12 +99,12 @@ app.post('/api/produtos', async (req, res) => {
     }
 });
 
-// 5. ROTA DELETE PRODUTO (Inativar/Soft Delete)
+// 6. ROTA DELETE PRODUTO (Inativar/Soft Delete)
 app.delete('/api/produtos/:id', async (req, res) => {
     const { id } = req.params;
     try {
-        const query = 'UPDATE produtos SET ativo = FALSE WHERE id = $1';
-        await pool.query(query, [id]);
+        // Soft delete: muda o status 'ativo' para FALSE
+        await Produto.findByIdAndUpdate(id, { ativo: false });
         res.json({ success: true, message: `Produto ID ${id} inativado com sucesso.` });
     } catch (err) {
         console.error('Erro ao inativar produto:', err);
@@ -111,9 +113,9 @@ app.delete('/api/produtos/:id', async (req, res) => {
 });
 
 
-// 6. ROTA FINALIZAR VENDA (POST /api/pedido) - COMPLETA
+// 7. ROTA FINALIZAR VENDA (POST /api/pedido) - COMPLETA
 app.post('/api/pedido', async (req, res) => {
-    const client = await pool.connect();
+    // Não precisa de pool.connect() no Mongoose
     try {
         const { itens, total, cliente, formaPagamento, valorPago, troco } = req.body;
 
@@ -121,62 +123,46 @@ app.post('/api/pedido', async (req, res) => {
             return res.status(400).json({ success: false, message: 'O pedido não pode estar vazio.' });
         }
 
-        await client.query('BEGIN'); 
-
-        const vendaQuery = `
-            INSERT INTO vendas (item_pedido, total_venda, cliente, forma_pagamento, valor_pago, troco)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id;
-        `;
-        const vendaResult = await client.query(vendaQuery, [
-            JSON.stringify(itens), 
-            total, 
-            cliente, 
-            formaPagamento, 
-            valorPago, 
-            troco
-        ]);
+        // Cria e salva o novo documento de Venda
+        const novaVenda = new Venda({
+            itens: itens, // Os itens são salvos como array
+            total_venda: total,
+            cliente: cliente,
+            forma_pagamento: formaPagamento,
+            valor_pago: valorPago,
+            troco: troco
+        });
+        
+        const vendaSalva = await novaVenda.save();
         
         // Se a inserção no Sheets for implementada, ela viria aqui
         
-        await client.query('COMMIT');
-
-        res.json({ success: true, message: `Venda ${vendaResult.rows[0].id} registrada com sucesso!` });
+        res.json({ success: true, message: `Venda ${vendaSalva._id} registrada com sucesso! ID: ${vendaSalva._id}` });
 
     } catch (err) {
-        await client.query('ROLLBACK');
         console.error('Erro ao finalizar venda:', err);
         res.status(500).json({ success: false, message: 'Erro interno do servidor ao registrar a venda.' });
-    } finally {
-        client.release();
     }
 });
 
 
-// 7. ROTA DE RELATÓRIO: BUSCAR VENDAS DO DIA (/api/vendas/hoje)
+// 8. ROTA DE RELATÓRIO: BUSCAR VENDAS DO DIA (/api/vendas/hoje)
 app.get('/api/vendas/hoje', async (req, res) => {
     try {
-        const result = await pool.query(`
-            SELECT 
-                data_venda, 
-                total_venda, 
-                forma_pagamento, 
-                cliente, 
-                item_pedido,
-                valor_pago,
-                troco
-            FROM vendas
-            WHERE data_venda >= CURRENT_DATE 
-              AND data_venda < CURRENT_DATE + INTERVAL '1 day'
-            ORDER BY data_venda DESC;
-        `);
+        // Calcula a data de hoje para buscar vendas a partir da meia-noite
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+
+        const vendas = await Venda.find({
+            data_venda: { $gte: hoje } 
+        }).sort({ data_venda: -1 }); // Ordena da mais nova para a mais antiga
         
-        const totalGeral = result.rows.reduce((sum, venda) => sum + venda.total_venda, 0);
-        const quantidadeVendas = result.rows.length;
+        const totalGeral = vendas.reduce((sum, venda) => sum + venda.total_venda, 0);
+        const quantidadeVendas = vendas.length;
 
         res.json({ 
             success: true, 
-            data: result.rows,
+            data: vendas,
             resumo: {
                 totalGeral: totalGeral,
                 quantidadeVendas: quantidadeVendas
@@ -189,7 +175,9 @@ app.get('/api/vendas/hoje', async (req, res) => {
 });
 
 
-// 8. INICIA O SERVIDOR
-app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
-});
+// Função que inicia o Express (chamada após a conexão com o MongoDB)
+function iniciarServidor() {
+    app.listen(PORT, () => {
+        console.log(`Servidor rodando na porta ${PORT}`);
+    });
+}
