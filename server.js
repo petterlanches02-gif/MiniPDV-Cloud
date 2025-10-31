@@ -14,8 +14,20 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false } 
 });
 
+// ... (início do seu server.js)
+
 async function inicializarBanco() {
     try {
+        // --- INÍCIO DO CÓDIGO TEMPORÁRIO PARA CORREÇÃO DE SCHEMA ---
+        if (process.env.FORCE_SCHEMA_FIX === 'true') {
+            console.log('ATENÇÃO: EXECUTANDO LIMPEZA DE SCHEMA FORÇADA. APAGANDO TABELAS...');
+            // Excluímos as duas tabelas para garantir a limpeza completa
+            await pool.query('DROP TABLE IF EXISTS vendas CASCADE;');
+            await pool.query('DROP TABLE IF EXISTS produtos CASCADE;'); 
+            console.log('Tabelas antigas removidas com sucesso.');
+        }
+        // --- FIM DO CÓDIGO TEMPORÁRIO ---
+
         await pool.query(`
             CREATE TABLE IF NOT EXISTS produtos (
                 id SERIAL PRIMARY KEY,
@@ -25,12 +37,12 @@ async function inicializarBanco() {
                 ativo BOOLEAN DEFAULT TRUE
             );
         `);
-        // TABELA VENDAS: CORRIGIDA PARA REGISTRAR TRANSAÇÃO COMPLETA
+        // TABELA VENDAS SERÁ RECRIADA CORRETAMENTE
         await pool.query(`
             CREATE TABLE IF NOT EXISTS vendas (
                 id SERIAL PRIMARY KEY,
                 item_pedido JSONB NOT NULL,
-                total_venda REAL NOT NULL,
+                total_venda REAL NOT NULL, 
                 cliente VARCHAR(255),
                 data_venda TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 forma_pagamento VARCHAR(100), 
@@ -40,8 +52,7 @@ async function inicializarBanco() {
         `);
         console.log('Tabelas verificadas/criadas no Postgres.');
     } catch (err) {
-        console.error('ERRO FATAL: Falha ao conectar ou inicializar o Postgres. Verifique a DATABASE_URL.', err);
-        process.exit(1); 
+       // ... (restante do seu bloco catch)
     }
 }
 

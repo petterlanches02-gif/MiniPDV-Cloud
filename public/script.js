@@ -1,539 +1,211 @@
-// VARIÁVEIS GLOBAIS
-let produtosCadastrados = [];
-let pedidoAtual = [];
-let categorias = [];
+const express = require('express');
+const mongoose = require('mongoose'); // Usaremos Mongoose para MongoDB
+const bodyParser = require('body-parser');
 
-// ==========================================================
-// 1. LÓGICAS DE PRODUTOS E CARDÁPIO (PDV)
-// ==========================================================
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Função para carregar produtos do servidor
-async function carregarProdutos() {
-    const cardapioDiv = document.getElementById('cardapio');
-    const listaProdutosDiv = document.getElementById('lista-produtos-cadastrados');
+// URL DEVE SER SUBSTITUÍDA PELA SUA STRING DE CONEXÃO DO MONGODB ATLAS
+// Chave: MONGODB_URI (ou DATABASE_URL, se preferir)
+const MONGODB_URI = process.env.MONGODB_URI;
 
-    cardapioDiv.innerHTML = '<p>Carregando produtos...</p>';
-    listaProdutosDiv.innerHTML = '<p>Carregando lista de produtos...</p>';
-
+// 1. CONEXÃO COM O MONGODB
+async function conectarBanco() {
+    if (!MONGODB_URI) {
+        console.error('ERRO FATAL: Variável de ambiente MONGODB_URI não definida.');
+        process.exit(1);
+    }
     try {
-        const response = await fetch('/api/produtos');
-        const result = await response.json();
-
-        if (result.success) {
-            produtosCadastrados = result.data;
-            
-            exibirProdutosNoCardapio(produtosCadastrados);
-            exibirProdutosNaTabela(produtosCadastrados);
-        } else {
-            mostrarMensagem("Erro ao carregar produtos: " + result.message, 'error');
-            cardapioDiv.innerHTML = '<p style="color: red;">Falha ao carregar cardápio.</p>';
-            listaProdutosDiv.innerHTML = '<p style="color: red;">Falha ao carregar lista.</p>';
-        }
-    } catch (error) {
-        console.error("Erro de conexão com o servidor:", error);
-        mostrarMensagem("Erro de conexão com o servidor. Verifique o backend.", 'error');
-        cardapioDiv.innerHTML = '<p style="color: red;">Erro de conexão.</p>';
-        listaProdutosDiv.innerHTML = '<p style="color: red;">Erro de conexão.</p>';
+        await mongoose.connect(MONGODB_URI, {
+            // As opções a seguir são geralmente padronizadas e podem não ser necessárias em versões recentes,
+            // mas são mantidas para compatibilidade com versões anteriores.
+            // useNewUrlParser: true,
+            // useUnifiedTopology: true,
+        });
+        console.log('Conexão com o MongoDB estabelecida com sucesso.');
+    } catch (err) {
+        console.error('ERRO FATAL: Falha ao conectar ao MongoDB. Verifique a MONGODB_URI.', err);
+        process.exit(1);
     }
 }
 
-// Função para exibir produtos no PDV (Cardápio)
-function exibirProdutosNoCardapio(produtos) {
-    const cardapioDiv = document.getElementById('cardapio');
-    const categoriasNav = document.getElementById('categorias-nav');
-    cardapioDiv.innerHTML = '';
-    categoriasNav.innerHTML = '';
+// 2. DEFINIÇÃO DOS MODELOS (Esquemas)
+const ProdutoSchema = new mongoose.Schema({
+    nome: { type: String, required: true },
+    preco: { type: Number, required: true },
+    categoria: { type: String, required: true },
+    ativo: { type: Boolean, default: true }
+});
 
-    if (produtos.length === 0) {
-        cardapioDiv.innerHTML = '<p>Nenhum produto cadastrado. Cadastre um produto primeiro.</p>';
-        return;
-    }
+const VendaSchema = new mongoose.Schema({
+    // Utilizamos 'itens' no plural, mais intuitivo
+    itens: { type: Array, required: true }, 
+    total_venda: { type: Number, required: true },
+    cliente: { type: String, default: 'Não Informado' },
+    data_venda: { type: Date, default: Date.now },
+    forma_pagamento: { type: String },
+    valor_pago: { type: Number },
+    troco: { type: Number }
+});
 
-    // 1. Filtra categorias
-    categorias = [...new Set(produtos.map(p => p.categoria))];
-    
-    // 2. Cria botão "Todos"
-    const todosBtn = document.createElement('button');
-    todosBtn.textContent = 'Todos';
-    todosBtn.classList.add('categoria-btn', 'active');
-    todosBtn.onclick = () => filtrarCardapio('Todos');
-    categoriasNav.appendChild(todosBtn);
+const Produto = mongoose.model('Produto', ProdutoSchema);
+const Venda = mongoose.model('Venda', VendaSchema);
 
-    // 3. Cria botões de categoria
-    categorias.forEach(cat => {
-        const btn = document.createElement('button');
-        btn.textContent = cat;
-        btn.classList.add('categoria-btn');
-        btn.onclick = () => filtrarCardapio(cat);
-        categoriasNav.appendChild(btn);
-    });
-
-    // 4. Exibe todos os produtos por padrão
-    produtos.forEach(produto => {
-        const itemDiv = document.createElement('div');
-        itemDiv.classList.add('cardapio-item', `categoria-${produto.categoria.replace(/\s/g, '-')}`);
-        itemDiv.setAttribute('data-categoria', produto.categoria);
-        itemDiv.onclick = () => adicionarAoPedido(produto);
-
-        itemDiv.innerHTML = `
-            <h3>${produto.nome}</h3>
-            <p class="categoria-item">${produto.categoria}</p>
-            <p class="preco">R$ ${produto.preco.toFixed(2).replace('.', ',')}</p>
-        `;
-        cardapioDiv.appendChild(itemDiv);
-    });
-}
-
-// Função para filtrar o cardápio por categoria
-function filtrarCardapio(categoria) {
-    const todosItens = document.querySelectorAll('.cardapio-item');
-    const todosBotoes = document.querySelectorAll('.categoria-btn');
-
-    // Remove 'active' de todos os botões
-    todosBotoes.forEach(btn => btn.classList.remove('active'));
-
-    // Ativa o botão selecionado
-    const botaoSelecionado = Array.from(todosBotoes).find(btn => btn.textContent === categoria);
-    if (botaoSelecionado) {
-        botaoSelecionado.classList.add('active');
-    }
-
-    // Exibe/Oculta itens
-    todosItens.forEach(item => {
-        const itemCategoria = item.getAttribute('data-categoria');
-        if (categoria === 'Todos' || itemCategoria === categoria) {
-            item.style.display = 'block';
-        } else {
-            item.style.display = 'none';
-        }
-    });
-}
+// 3. MIDDLEWARE E ARQUIVOS ESTÁTICOS
+app.use(bodyParser.json());
+app.use(express.static('public'));
+conectarBanco();
 
 
 // ==========================================================
-// 2. LÓGICAS DE PEDIDO (CARRINHO)
+// 4. ROTAS DE PRODUTOS
 // ==========================================================
 
-// Adiciona um produto ao carrinho
-function adicionarAoPedido(produto) {
-    const itemExistente = pedidoAtual.find(item => item.id === produto.id);
-
-    if (itemExistente) {
-        itemExistente.quantidade++;
-        itemExistente.total = itemExistente.quantidade * itemExistente.preco;
-    } else {
-        pedidoAtual.push({
-            id: produto.id,
-            nome: produto.nome,
-            preco: produto.preco,
-            quantidade: 1,
-            total: produto.preco
-        });
-    }
-    atualizarPedidoLista();
-}
-
-// Remove ou diminui a quantidade de um item no carrinho
-function manipularItem(itemId, acao) {
-    const index = pedidoAtual.findIndex(item => item.id === itemId);
-
-    if (index !== -1) {
-        const item = pedidoAtual[index];
-        if (acao === 'adicionar') {
-            item.quantidade++;
-        } else if (acao === 'remover' && item.quantidade > 1) {
-            item.quantidade--;
-        } else if (acao === 'deletar' || item.quantidade === 1) {
-            pedidoAtual.splice(index, 1); // Remove o item
-        }
-    }
-    atualizarPedidoLista();
-}
-
-// Renderiza a lista do carrinho e calcula o total
-function atualizarPedidoLista() {
-    const listaDiv = document.getElementById('pedido-lista');
-    const totalSpan = document.getElementById('total-valor');
-    const btnImprimir = document.getElementById('btn-imprimir');
-    
-    listaDiv.innerHTML = '';
-    let totalGeral = 0;
-
-    if (pedidoAtual.length === 0) {
-        listaDiv.innerHTML = '<p>O carrinho está vazio.</p>';
-        btnImprimir.disabled = true;
-    } else {
-        btnImprimir.disabled = false;
-        pedidoAtual.forEach(item => {
-            item.total = item.quantidade * item.preco;
-            totalGeral += item.total;
-
-            const itemDiv = document.createElement('div');
-            itemDiv.classList.add('pedido-item');
-            itemDiv.innerHTML = `
-                <span>${item.quantidade}x ${item.nome}</span>
-                <span class="pedido-valor">R$ ${item.total.toFixed(2).replace('.', ',')}</span>
-                <div class="pedido-actions">
-                    <button onclick="manipularItem(${item.id}, 'adicionar')">+</button>
-                    <button onclick="manipularItem(${item.id}, 'remover')">-</button>
-                    <button class="remover-item" onclick="manipularItem(${item.id}, 'deletar')">X</button>
-                </div>
-            `;
-            listaDiv.appendChild(itemDiv);
-        });
-    }
-
-    totalSpan.textContent = totalGeral.toFixed(2).replace('.', ',');
-    // Atualiza o cálculo do troco sempre que o total mudar
-    calcularTroco(); 
-}
-
-// Calcula e exibe o troco
-function calcularTroco() {
-    const totalValor = parseFloat(document.getElementById('total-valor').textContent.replace(',', '.'));
-    const valorPagoInput = document.getElementById('valor-pago');
-    const trocoSpan = document.getElementById('troco-valor');
-    
-    const valorPago = parseFloat(valorPagoInput.value) || 0;
-    
-    let troco = valorPago - totalValor;
-    
-    if (troco < 0) {
-        troco = 0; // Se o valor pago for menor que o total, o troco é 0
-    }
-
-    trocoSpan.textContent = troco.toFixed(2).replace('.', ',');
-}
-
-// Finaliza a venda e envia para o backend
-async function finalizarVenda() {
-    if (pedidoAtual.length === 0) {
-        mostrarMensagem("O pedido está vazio.", 'info');
-        return;
-    }
-
-    const total = parseFloat(document.getElementById('total-valor').textContent.replace(',', '.'));
-    const cliente = document.getElementById('nome-cliente').value || 'Não Informado';
-    const formaPagamento = document.getElementById('forma-pagamento').value;
-    const valorPago = parseFloat(document.getElementById('valor-pago').value) || total;
-    const troco = parseFloat(document.getElementById('troco-valor').textContent.replace(',', '.'));
-
-    const vendaData = {
-        itens: pedidoAtual.map(item => ({
-            id: item.id,
-            nome: item.nome,
-            preco: item.preco,
-            quantidade: item.quantidade
-        })),
-        total: total,
-        cliente: cliente,
-        formaPagamento: formaPagamento,
-        valorPago: valorPago,
-        troco: troco
-    };
-
+// GET: Buscar produtos ativos
+app.get('/api/produtos', async (req, res) => {
     try {
-        const response = await fetch('/api/pedido', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(vendaData)
-        });
-        const result = await response.json();
-
-        if (result.success) {
-            mostrarMensagem("Venda finalizada! " + result.message, 'success');
-            // Limpar o PDV
-            pedidoAtual = [];
-            document.getElementById('nome-cliente').value = '';
-            document.getElementById('valor-pago').value = '0.00';
-            document.getElementById('troco-valor').textContent = '0.00';
-            atualizarPedidoLista();
-            carregarRelatorio(); // Recarrega o relatório para mostrar a nova venda
-        } else {
-            mostrarMensagem("Erro ao finalizar a venda: " + result.message, 'error');
-        }
-    } catch (error) {
-        console.error("Erro de rede ao finalizar a venda:", error);
-        mostrarMensagem("Erro de conexão ao finalizar a venda. Tente novamente.", 'error');
+        // Busca apenas produtos com ativo: true, ordenados por nome
+        const produtos = await Produto.find({ ativo: true }).sort({ nome: 1 });
+        // MongoDB usa ._id, mas mantemos o nome 'id' no frontend por consistência
+        const dataFormatada = produtos.map(p => ({
+            id: p._id,
+            nome: p.nome,
+            preco: p.preco,
+            categoria: p.categoria,
+            ativo: p.ativo
+        }));
+        res.json({ success: true, data: dataFormatada });
+    } catch (err) {
+        console.error('Erro ao buscar produtos:', err);
+        res.status(500).json({ success: false, message: 'Erro interno do servidor ao buscar produtos.' });
     }
-}
+});
 
-
-// ==========================================================
-// 3. LÓGICAS DE CADASTRO
-// ==========================================================
-
-// Função para exibir produtos na tabela da aba Cadastro
-function exibirProdutosNaTabela(produtos) {
-    const listaDiv = document.getElementById('lista-produtos-cadastrados');
-    listaDiv.innerHTML = '';
-
-    if (produtos.length === 0) {
-        listaDiv.innerHTML = '<p>Nenhum produto cadastrado.</p>';
-        return;
+// POST/UPDATE: Salvar ou atualizar produto
+app.post('/api/produtos', async (req, res) => {
+    const { id, nome, preco, categoria } = req.body;
+    if (!nome || !preco || !categoria) {
+        return res.status(400).json({ success: false, message: 'Todos os campos são obrigatórios.' });
     }
-
-    const table = document.createElement('table');
-    table.innerHTML = `
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Nome</th>
-                <th>Categoria</th>
-                <th>Preço</th>
-                <th>Ações</th>
-            </tr>
-        </thead>
-        <tbody id="produtos-tabela-body">
-        </tbody>
-    `;
-    listaDiv.appendChild(table);
-    const tbody = document.getElementById('produtos-tabela-body');
-
-    produtos.forEach(produto => {
-        const row = tbody.insertRow();
-        row.innerHTML = `
-            <td>${produto.id}</td>
-            <td>${produto.nome}</td>
-            <td>${produto.categoria}</td>
-            <td>R$ ${produto.preco.toFixed(2).replace('.', ',')}</td>
-            <td>
-                <button class="btn-editar" onclick="editarProduto(${produto.id})">Editar</button>
-                <button class="btn-deletar" onclick="deletarProduto(${produto.id})">Deletar</button>
-            </td>
-        `;
-    });
-}
-
-// Preenche o formulário para edição
-function editarProduto(id) {
-    const produto = produtosCadastrados.find(p => p.id === id);
-    if (!produto) return;
-
-    document.getElementById('produto-id').value = produto.id;
-    document.getElementById('produto-nome').value = produto.nome;
-    document.getElementById('produto-categoria').value = produto.categoria;
-    document.getElementById('produto-preco').value = produto.preco;
-
-    document.getElementById('btn-salvar-produto').textContent = 'Atualizar Produto';
-    document.getElementById('btn-cancelar-edicao').style.display = 'inline-block';
-    mostrarMensagem(`Editando: ${produto.nome}.`, 'info');
-}
-
-// Limpa o formulário de cadastro/edição
-function limparFormularioCadastro() {
-    document.getElementById('produto-id').value = '';
-    document.getElementById('produto-nome').value = '';
-    document.getElementById('produto-categoria').value = '';
-    document.getElementById('produto-preco').value = '';
-    document.getElementById('btn-salvar-produto').textContent = 'Salvar Novo Produto';
-    document.getElementById('btn-cancelar-edicao').style.display = 'none';
-    mostrarMensagem('', 'none');
-}
-
-// Envia dados do formulário para o backend (Cadastro/Edição)
-async function registrarProduto() {
-    const id = document.getElementById('produto-id').value;
-    const nome = document.getElementById('produto-nome').value;
-    const categoria = document.getElementById('produto-categoria').value;
-    const preco = document.getElementById('produto-preco').value;
-
-    if (!nome || !categoria || !preco) {
-        mostrarMensagem('Preencha todos os campos do produto.', 'error');
-        return;
-    }
-
-    const produtoData = {
-        id: id || null,
-        nome: nome,
-        categoria: categoria,
-        preco: parseFloat(preco)
-    };
-
+    
     try {
-        const response = await fetch('/api/produtos', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(produtoData)
-        });
-        const result = await response.json();
-
-        if (result.success) {
-            mostrarMensagem(result.message, 'success');
-            limparFormularioCadastro();
-            carregarProdutos(); // Recarrega as listas
-        } else {
-            mostrarMensagem("Erro ao salvar produto: " + result.message, 'error');
-        }
-    } catch (error) {
-        console.error("Erro de rede ao salvar produto:", error);
-        mostrarMensagem("Erro de conexão com o servidor ao salvar o produto.", 'error');
-    }
-}
-
-// Deleta (Inativa) um produto
-async function deletarProduto(id) {
-    if (!confirm("Tem certeza que deseja DELETAR (inativar) este produto?")) return;
-
-    try {
-        const response = await fetch(`/api/produtos/${id}`, {
-            method: 'DELETE'
-        });
-        const result = await response.json();
-
-        if (result.success) {
-            mostrarMensagem(result.message, 'success');
-            carregarProdutos(); // Recarrega as listas
-        } else {
-            mostrarMensagem("Erro ao deletar produto: " + result.message, 'error');
-        }
-    } catch (error) {
-        console.error("Erro de rede ao deletar produto:", error);
-        mostrarMensagem("Erro de conexão com o servidor ao deletar o produto.", 'error');
-    }
-}
-
-
-// ==========================================================
-// 4. LÓGICAS DE RELATÓRIO
-// ==========================================================
-
-async function carregarRelatorio() {
-    const vendasDiv = document.getElementById('vendas-do-dia');
-    vendasDiv.innerHTML = '<p>Carregando vendas...</p>';
-
-    try {
-        const response = await fetch('/api/vendas/hoje');
-        const result = await response.json();
-
-        if (result.success) {
-            const vendas = result.data;
-            const resumo = result.resumo;
-
-            if (vendas.length === 0) {
-                vendasDiv.innerHTML = `
-                    <h3>Resumo do Dia: R$ ${resumo.totalGeral.toFixed(2).replace('.', ',')}</h3>
-                    <p>Nenhuma venda registrada hoje.</p>
-                `;
-                return;
+        if (id) {
+            // Atualizar
+            const produto = await Produto.findByIdAndUpdate(id, { nome, preco: parseFloat(preco), categoria }, { new: true });
+            if (!produto) {
+                return res.status(404).json({ success: false, message: 'Produto não encontrado para atualização.' });
             }
-
-            // Cria o HTML para exibir o resumo e a tabela
-            let htmlContent = `
-                <div id="resumo-vendas" style="margin-bottom: 20px; border: 1px solid #ddd; padding: 15px; border-radius: 4px; background-color: #f9f9f9;">
-                    <p>Total de Vendas Registradas: <strong>${resumo.quantidadeVendas}</strong></p>
-                    <p>Faturamento Total do Dia: <strong>R$ ${resumo.totalGeral.toFixed(2).replace('.', ',')}</strong></p>
-                </div>
-
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Hora</th>
-                            <th>Total (R$)</th>
-                            <th>Pagamento</th>
-                            <th>Troco</th>
-                            <th>Itens</th>
-                            <th>Cliente</th>
-                        </tr>
-                    </thead>
-                    <tbody id="relatorio-vendas-body">
-            `;
-
-            // Preenche a Tabela de Detalhes
-            vendas.forEach(venda => {
-                const dataFormatada = new Date(venda.data_venda).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                
-                // Formata os itens do pedido para exibição
-                const itensDetalhe = venda.item_pedido.map(item => 
-                    `${item.quantidade}x ${item.nome}`
-                ).join('<br>');
-
-                htmlContent += `
-                    <tr>
-                        <td>${dataFormatada}</td>
-                        <td>R$ ${venda.total_venda.toFixed(2).replace('.', ',')}</td>
-                        <td>${venda.forma_pagamento}</td>
-                        <td>R$ ${venda.troco.toFixed(2).replace('.', ',')}</td>
-                        <td>${itensDetalhe}</td>
-                        <td>${venda.cliente}</td>
-                    </tr>
-                `;
-            });
-
-            htmlContent += `
-                    </tbody>
-                </table>
-            `;
-            vendasDiv.innerHTML = htmlContent;
-
+            res.json({ success: true, message: 'Produto atualizado com sucesso!' });
         } else {
-            vendasDiv.innerHTML = `<p style="color: red;">Erro ao carregar relatório: ${result.message}</p>`;
+            // Criar Novo
+            const novoProduto = new Produto({ nome, preco: parseFloat(preco), categoria });
+            await novoProduto.save();
+            res.json({ success: true, message: 'Produto cadastrado com sucesso!', id: novoProduto._id });
         }
-    } catch (error) {
-        console.error("Erro de comunicação ao buscar relatórios:", error);
-        vendasDiv.innerHTML = '<p style="color: red;">Erro de conexão com o servidor.</p>';
+    } catch (err) {
+        console.error('Erro ao salvar produto:', err);
+        res.status(500).json({ success: false, message: 'Erro interno ao salvar produto.' });
     }
-}
+});
+
+// DELETE: Inativar produto (Soft Delete)
+app.delete('/api/produtos/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        // Simplesmente define 'ativo' como false
+        const resultado = await Produto.findByIdAndUpdate(id, { ativo: false });
+        
+        if (!resultado) {
+             return res.status(404).json({ success: false, message: 'Produto não encontrado.' });
+        }
+        
+        res.json({ success: true, message: `Produto inativado com sucesso.` });
+    } catch (err) {
+        console.error('Erro ao inativar produto:', err);
+        res.status(500).json({ success: false, message: 'Erro interno ao inativar produto.' });
+    }
+});
 
 
 // ==========================================================
-// 5. FUNÇÕES GERAIS E INICIALIZAÇÃO
+// 5. ROTAS DE VENDAS
 // ==========================================================
 
-// Função para exibir mensagens
-function mostrarMensagem(texto, tipo) {
-    const msg = document.getElementById('mensagem');
-    msg.className = 'mensagem';
-    msg.textContent = texto;
+// POST: Finalizar Venda
+app.post('/api/pedido', async (req, res) => {
+    try {
+        const { itens, total, cliente, formaPagamento, valorPago, troco } = req.body;
 
-    if (tipo === 'success') {
-        msg.classList.add('success');
-    } else if (tipo === 'error') {
-        msg.classList.add('error');
-    } else if (tipo === 'info') {
-        msg.classList.add('info');
-    } else {
-        // Se tipo for 'none' ou outro, apenas limpa a mensagem
-        msg.style.display = 'none';
-        return;
+        if (!itens || itens.length === 0) {
+            return res.status(400).json({ success: false, message: 'O pedido não pode estar vazio.' });
+        }
+        
+        // MongoDB não exige transação manual, apenas salvamos o documento
+        const novaVenda = new Venda({
+            itens: itens,
+            total_venda: total,
+            cliente: cliente,
+            forma_pagamento: formaPagamento,
+            valor_pago: valorPago,
+            troco: troco
+        });
+
+        await novaVenda.save();
+
+        res.json({ success: true, message: `Venda ${novaVenda._id} registrada com sucesso!` });
+
+    } catch (err) {
+        console.error('Erro ao finalizar venda:', err);
+        // Agora, se houver um erro, o log será mais detalhado do Mongoose
+        res.status(500).json({ success: false, message: 'Erro interno do servidor ao registrar a venda.' });
     }
-    msg.style.display = 'block';
-}
+});
 
-// Função para controlar a troca de abas
-function mostrarAba(abaId) {
-    // 1. Esconder todos os conteúdos e desativar botões
-    document.querySelectorAll('.tab-content').forEach(content => {
-        content.classList.remove('active');
-    });
-    document.querySelectorAll('.tab-button').forEach(button => {
-        button.classList.remove('active');
-    });
+// GET: Buscar Vendas do Dia (Relatório)
+app.get('/api/vendas/hoje', async (req, res) => {
+    try {
+        // Define o início e o fim do dia de hoje
+        const inicioDoDia = new Date();
+        inicioDoDia.setHours(0, 0, 0, 0);
+        
+        const fimDoDia = new Date();
+        fimDoDia.setHours(23, 59, 59, 999);
 
-    // 2. Mostrar o conteúdo e ativar o botão correto
-    document.getElementById(abaId).classList.add('active');
-    document.querySelector(`.tab-button[onclick="mostrarAba('${abaId}')"]`).classList.add('active');
+        const vendas = await Venda.find({
+            data_venda: { $gte: inicioDoDia, $lte: fimDoDia } // Filtra pela data de hoje
+        }).sort({ data_venda: -1 }); // Ordena da mais recente para a mais antiga
+        
+        const totalGeral = vendas.reduce((sum, venda) => sum + venda.total_venda, 0);
+        const quantidadeVendas = vendas.length;
 
-    // 3. Executar ações específicas da aba
-    if (abaId === 'pdv') {
-        carregarProdutos();
-        atualizarPedidoLista();
-    } else if (abaId === 'cadastro') {
-        carregarProdutos();
-        limparFormularioCadastro();
-    } else if (abaId === 'relatorios') {
-        carregarRelatorio();
+        // Formata os dados para o frontend, incluindo o _id como id para consistência
+        const vendasFormatadas = vendas.map(v => ({
+            id: v._id,
+            total_venda: v.total_venda,
+            forma_pagamento: v.forma_pagamento,
+            cliente: v.cliente,
+            item_pedido: v.itens, // Agora é 'itens' no Schema
+            data_venda: v.data_venda,
+            valor_pago: v.valor_pago,
+            troco: v.troco
+        }));
+
+        res.json({ 
+            success: true, 
+            data: vendasFormatadas,
+            resumo: {
+                totalGeral: totalGeral,
+                quantidadeVendas: quantidadeVendas
+            }
+        });
+    } catch (err) {
+        console.error('Erro ao buscar vendas do dia:', err);
+        res.status(500).json({ success: false, message: 'Erro interno do servidor ao buscar relatórios.' });
     }
-}
+});
 
-// Inicialização: Garante que o PDV é carregado ao iniciar
-document.addEventListener('DOMContentLoaded', () => {
-    // Adiciona listener ao botão de finalizar pedido
-    document.getElementById('btn-imprimir').addEventListener('click', finalizarVenda);
-    
-    // Inicializa a primeira aba
-    mostrarAba('pdv'); 
-    
-    // Inicializa a lista de pedido
-    atualizarPedidoLista();
+
+// 6. INICIA O SERVIDOR
+app.listen(PORT, () => {
+    console.log(`Servidor rodando na porta ${PORT}`);
 });
